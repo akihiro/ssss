@@ -44,8 +44,11 @@
  *
  */
 
-#define mpz_lshift(A, B, l) mpz_mul_2exp(A, B, l)
-#define mpz_sizeinbits(A) (mpz_cmp_ui(A, 0) ? mpz_sizeinbase(A, 2) : 0)
+#include "ssss.h"
 
 /* field arithmetic routines */
-int field_size_valid(int deg);
+
+int field_size_valid(int deg)
+{
+  return (deg >= 8) && (deg <= MAXDEGREE) && (deg % 8 == 0);
+}

@@ -1,4 +1,4 @@
-OBJS=ssss.o cprng.o diffusion.o
+OBJS=ssss.o cprng.o diffusion.o field.o
 CFLAGS=-W -Wall -O2
 .PHONY: all compile doc clean install
 
@@ -36,4 +36,7 @@ cprng.o: cprng.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 diffusion.o: diffusion.c field.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+field.o: field.c
 	$(CC) $(CFLAGS) -c -o $@ $<
