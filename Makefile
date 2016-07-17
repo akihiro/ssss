@@ -1,5 +1,6 @@
-OBJS=ssss.o cprng.o diffusion.o field.o
-CFLAGS=-W -Wall -O2
+OBJS=ssss.o diffusion.o field.o
+LIBFLAGS=-Llibssss/src -lssss -lgmp
+CFLAGS=-Ilibssss/include -W -Wall -O2
 .PHONY: all compile doc clean install
 
 all: compile doc
@@ -9,7 +10,7 @@ compile: ssss-split ssss-combine
 doc: ssss.1 ssss.1.html
 
 ssss-split: $(OBJS)
-	$(CC) $(CFLAGS) -o ssss-split $(OBJS) -lgmp
+	$(CC) $(CFLAGS) -o ssss-split $(OBJS) $(LIBFLAGS)
 	strip ssss-split
 
 ssss-combine: ssss-split
@@ -29,10 +30,7 @@ install:
 	if [ -e ssss.1 ]; then install -o root -g wheel -m 644 ssss.1 ssss-split.1 ssss-combine.1 /usr/share/man/man1; else echo "WARNING: No man page was generated, so none will be installed."; fi
 	install -o root -g wheel -m 755 ssss-split ssss-combine /usr/bin
 
-ssss.o: ssss.c ssss.h cprng.h field.h diffusion.h
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-cprng.o: cprng.c
+ssss.o: ssss.c ssss.h field.h diffusion.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 diffusion.o: diffusion.c field.h
