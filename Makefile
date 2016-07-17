@@ -1,3 +1,5 @@
+.PHONY: all compile doc clean install
+
 all: compile doc
 
 compile: ssss-split ssss-combine
