@@ -56,14 +56,10 @@
 #include <sys/mman.h>
 
 #include <gmp.h>
+#include "ssss.h"
 #include "cprng.h"
 #include "field.h"
 #include "diffusion.h"
-
-#define VERSION "0.5.4"
-#define MAXDEGREE 1024
-#define MAXTOKENLEN 128
-#define MAXLINELEN (MAXTOKENLEN + 1 + 10 + 1 + MAXDEGREE / 4 + 10)
 
 /* coefficients of some irreducible polynomials over GF(2) */
 static const unsigned char irred_coeff[] = {
