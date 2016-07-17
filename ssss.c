@@ -139,58 +139,6 @@ void field_print(const field *f, FILE* stream, const mpz_t x, int hexmode)
   }
 }
 
-/* basic field arithmetic in GF(2^deg) */
-
-void field_add(mpz_t z, const mpz_t x, const mpz_t y)
-{
-  mpz_xor(z, x, y);
-}
-
-void field_mult(const field *f, mpz_t z, const mpz_t x, const mpz_t y)
-{
-  mpz_t b;
-  unsigned int i;
-  assert(z != y);
-  mpz_init_set(b, x);
-  if (mpz_tstbit(y, 0))
-    mpz_set(z, b);
-  else
-    mpz_set_ui(z, 0);
-  for(i = 1; i < f->degree; i++) {
-    mpz_lshift(b, b, 1);
-    if (mpz_tstbit(b, f->degree))
-      mpz_xor(b, b, f->poly);
-    if (mpz_tstbit(y, i))
-      mpz_xor(z, z, b);
-  }
-  mpz_clear(b);
-}
-
-void field_invert(const field *f, mpz_t z, const mpz_t x)
-{
-  mpz_t u, v, g, h;
-  int i;
-  assert(mpz_cmp_ui(x, 0));
-  mpz_init_set(u, x);
-  mpz_init_set(v, f->poly);
-  mpz_init_set_ui(g, 0);
-  mpz_set_ui(z, 1);
-  mpz_init(h);
-  while (mpz_cmp_ui(u, 1)) {
-    i = mpz_sizeinbits(u) - mpz_sizeinbits(v);
-    if (i < 0) {
-      mpz_swap(u, v);
-      mpz_swap(z, g);
-      i = -i;
-    }
-    mpz_lshift(h, v, i);
-    mpz_xor(u, u, h);
-    mpz_lshift(h, g, i);
-    mpz_xor(z, z, h);
-  }
-  mpz_clear(u); mpz_clear(v); mpz_clear(g); mpz_clear(h);
-}
-
 /* evaluate polynomials efficiently
  * Note that this implementation adds an additional x^k term. This term is
  * subtracted off on recombining. This additional term neither adds nor removes
