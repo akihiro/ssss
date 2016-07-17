@@ -44,10 +44,53 @@
  *
  */
 
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
+
+#include "ssss.h"
+
+#define RANDOM_SOURCE "/dev/random"
 
 /* routines for the random number generator */
-int cprng_init(void);
-int cprng_deinit(int cprng);
-int cprng_read(int cprng, uint8_t *buf, size_t len);
+
+typedef struct {
+	int cprng;
+} ssss_cprng_impl;
+
+int cprng_read(void *data, uint8_t *buf, size_t len)
+{
+  int cprng = ((ssss_cprng_impl*)data)->cprng;
+  size_t count;
+  int i;
+  for(count = 0; count < len; count += i) {
+    if ((i = read(cprng, buf + count, len - count)) < 0) {
+      close(cprng);
+      return i;
+    }
+  }
+  return 0;
+}
+
+ssss_cprng* ssss_cprng_alloc()
+{
+  ssss_cprng_impl *impl =
+    (ssss_cprng_impl*)malloc(sizeof(ssss_cprng_impl));
+  impl->cprng = open(RANDOM_SOURCE, O_RDONLY);
+
+  ssss_cprng *cprng =
+    (ssss_cprng*)malloc(sizeof(ssss_cprng));
+  cprng->data = (void*)impl;
+  cprng->read  = cprng_read;
+  return cprng;
+}
+
+void ssss_cprng_free(ssss_cprng* cprng)
+{
+  ssss_cprng_impl *impl = (ssss_cprng_impl*)cprng->data;
+  close(impl->cprng);
+  free(impl);
+  free(cprng);
+}

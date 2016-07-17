@@ -56,8 +56,8 @@
 #include <sys/mman.h>
 
 #include <gmp.h>
+#include <ssss.h>
 #include "ssss.h"
-#include "cprng.h"
 #include "field.h"
 #include "diffusion.h"
 
@@ -260,18 +260,17 @@ void split(void)
       warning("security level too small for the diffusion layer");
   }
 
-  int cprng;
-  if ((cprng = cprng_init()) < 0)
-    fatal(ssss_errmsg);
+  ssss_cprng *cprng = ssss_cprng_alloc();
+  if (cprng == NULL)
+    fatal("Can't setup cprng");
   for(i = 1; i < opt_threshold; i++) {
     mpz_init(coeff[i]);
     uint8_t buf[MAXDEGREE / 8];
-    if (cprng_read(cprng, buf, ssss->degree / 8) < 0)
-      fatal(ssss_errmsg);
+    if (cprng->read(cprng->data, buf, ssss->degree / 8) < 0)
+      fatal("Cant't read cprng");
     mpz_import(coeff[i], ssss->degree / 8, 1, 1, 0, 0, buf);
   }
-  if (cprng_deinit(cprng) < 0)
-    fatal(ssss_errmsg);
+  ssss_cprng_free(cprng);
 
 
   mpz_init(x);
