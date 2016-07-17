@@ -29,7 +29,7 @@ install:
 	if [ -e ssss.1 ]; then install -o root -g wheel -m 644 ssss.1 ssss-split.1 ssss-combine.1 /usr/share/man/man1; else echo "WARNING: No man page was generated, so none will be installed."; fi
 	install -o root -g wheel -m 755 ssss-split ssss-combine /usr/bin
 
-ssss.o: ssss.c cprng.h field.h diffusion.h
+ssss.o: ssss.c ssss.h cprng.h field.h diffusion.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 cprng.o: cprng.c
