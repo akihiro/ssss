@@ -47,5 +47,10 @@
 #define mpz_lshift(A, B, l) mpz_mul_2exp(A, B, l)
 #define mpz_sizeinbits(A) (mpz_cmp_ui(A, 0) ? mpz_sizeinbase(A, 2) : 0)
 
+typedef struct {
+  unsigned int degree;
+  mpz_t poly;
+} field;
+
 /* field arithmetic routines */
 int field_size_valid(int deg);

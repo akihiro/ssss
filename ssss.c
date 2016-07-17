@@ -85,8 +85,6 @@ int opt_number = -1;
 char *opt_token = NULL;
 char *ssss_errmsg = NULL;
 
-unsigned int degree;
-mpz_t poly;
 struct termios echo_orig, echo_off;
 
 /* emergency abort and warning functions */
@@ -107,31 +105,38 @@ void warning(char *msg)
 /* initialize 'poly' to a bitfield representing the coefficients of an
    irreducible polynomial of degree 'deg' */
 
-void field_init(int deg)
+field* field_init(int deg)
 {
   assert(field_size_valid(deg));
-  mpz_init_set_ui(poly, 0);
-  mpz_setbit(poly, deg);
-  mpz_setbit(poly, irred_coeff[3 * (deg / 8 - 1) + 0]);
-  mpz_setbit(poly, irred_coeff[3 * (deg / 8 - 1) + 1]);
-  mpz_setbit(poly, irred_coeff[3 * (deg / 8 - 1) + 2]);
-  mpz_setbit(poly, 0);
-  degree = deg;
+  field *f = (field*)malloc(sizeof(field));
+  if (f == NULL) {
+    ssss_errmsg = "memory allocation failure";
+    return NULL;
+  }
+  mpz_init_set_ui(f->poly, 0);
+  mpz_setbit(f->poly, deg);
+  mpz_setbit(f->poly, irred_coeff[3 * (deg / 8 - 1) + 0]);
+  mpz_setbit(f->poly, irred_coeff[3 * (deg / 8 - 1) + 1]);
+  mpz_setbit(f->poly, irred_coeff[3 * (deg / 8 - 1) + 2]);
+  mpz_setbit(f->poly, 0);
+  f->degree = deg;
+  return f;
 }
 
-void field_deinit(void)
+void field_deinit(field *f)
 {
-  mpz_clear(poly);
+  mpz_clear(f->poly);
+  free(f);
 }
 
 /* I/O routines for GF(2^deg) field elements */
 
-void field_import(mpz_t x, const char *s, int hexmode)
+void field_import(const field *f, mpz_t x, const char *s, int hexmode)
 {
   if (hexmode) {
-    if (strlen(s) > degree / 4)
+    if (strlen(s) > f->degree / 4)
       fatal("input string too long");
-    if (strlen(s) < degree / 4)
+    if (strlen(s) < f->degree / 4)
       warning("input string too short, adding null padding on the left");
     if (mpz_set_str(x, s, 16) || (mpz_cmp_ui(x, 0) < 0))
       fatal("invalid syntax");
@@ -139,7 +144,7 @@ void field_import(mpz_t x, const char *s, int hexmode)
   else {
     int i;
     int warn = 0;
-    if (strlen(s) > degree / 8)
+    if (strlen(s) > f->degree / 8)
       fatal("input string too long");
     for(i = strlen(s) - 1; i >= 0; i--)
       warn = warn || (s[i] < 32) || (s[i] >= 127);
@@ -149,11 +154,11 @@ void field_import(mpz_t x, const char *s, int hexmode)
   }
 }
 
-void field_print(FILE* stream, const mpz_t x, int hexmode)
+void field_print(const field *f, FILE* stream, const mpz_t x, int hexmode)
 {
   int i;
   if (hexmode) {
-    for(i = degree / 4 - mpz_sizeinbase(x, 16); i; i--)
+    for(i = f->degree / 4 - mpz_sizeinbase(x, 16); i; i--)
       fprintf(stream, "0");
     mpz_out_str(stream, 16, x);
     fprintf(stream, "\n");
@@ -163,7 +168,7 @@ void field_print(FILE* stream, const mpz_t x, int hexmode)
     size_t t;
     unsigned int i;
     int printable, warn = 0;
-    memset(buf, 0, degree / 8 + 1);
+    memset(buf, 0, f->degree / 8 + 1);
     mpz_export(buf, &t, 1, 1, 0, 0, x);
     for(i = 0; i < t; i++) {
       printable = (buf[i] >= 32) && (buf[i] < 127);
@@ -183,7 +188,7 @@ void field_add(mpz_t z, const mpz_t x, const mpz_t y)
   mpz_xor(z, x, y);
 }
 
-void field_mult(mpz_t z, const mpz_t x, const mpz_t y)
+void field_mult(const field *f, mpz_t z, const mpz_t x, const mpz_t y)
 {
   mpz_t b;
   unsigned int i;
@@ -193,23 +198,23 @@ void field_mult(mpz_t z, const mpz_t x, const mpz_t y)
     mpz_set(z, b);
   else
     mpz_set_ui(z, 0);
-  for(i = 1; i < degree; i++) {
+  for(i = 1; i < f->degree; i++) {
     mpz_lshift(b, b, 1);
-    if (mpz_tstbit(b, degree))
-      mpz_xor(b, b, poly);
+    if (mpz_tstbit(b, f->degree))
+      mpz_xor(b, b, f->poly);
     if (mpz_tstbit(y, i))
       mpz_xor(z, z, b);
   }
   mpz_clear(b);
 }
 
-void field_invert(mpz_t z, const mpz_t x)
+void field_invert(const field *f, mpz_t z, const mpz_t x)
 {
   mpz_t u, v, g, h;
   int i;
   assert(mpz_cmp_ui(x, 0));
   mpz_init_set(u, x);
-  mpz_init_set(v, poly);
+  mpz_init_set(v, f->poly);
   mpz_init_set_ui(g, 0);
   mpz_set_ui(z, 1);
   mpz_init(h);
@@ -233,14 +238,14 @@ void field_invert(mpz_t z, const mpz_t x)
  * subtracted off on recombining. This additional term neither adds nor removes
  * security but is left solely for legacy reasons.
  */
-
-void horner(int n, mpz_t y, const mpz_t x, const mpz_t coeff[])
+ 
+void horner(field *f, int n, mpz_t y, const mpz_t x, const mpz_t coeff[])
 {
   int i;
   mpz_set(y, x);
   for(i = n - 1; i; i--) {
     field_add(y, y, coeff[i]);
-    field_mult(y, y, x);
+    field_mult(f, y, y, x);
   }
   field_add(y, y, coeff[0]);
 }
@@ -250,7 +255,8 @@ void horner(int n, mpz_t y, const mpz_t x, const mpz_t coeff[])
 #define MPZ_SWAP(A, B) \
   do { mpz_set(h, A); mpz_set(A, B); mpz_set(B, h); } while(0)
 
-int restore_secret(int n,
+int restore_secret(const field *f,
+                   int n,
 #ifdef USE_RESTORE_SECRET_WORKAROUND
                    void *A,
 #else
@@ -278,18 +284,18 @@ int restore_secret(int n,
     for(j = i + 1; j < n; j++) {
       if (mpz_cmp_ui(AA[i][j], 0)) {
         for(k = i + 1; k < n; k++) {
-          field_mult(h, AA[k][i], AA[i][j]);
-          field_mult(AA[k][j], AA[k][j], AA[i][i]);
+          field_mult(f, h, AA[k][i], AA[i][j]);
+          field_mult(f, AA[k][j], AA[k][j], AA[i][i]);
           field_add(AA[k][j], AA[k][j], h);
         }
-        field_mult(h, b[i], AA[i][j]);
-        field_mult(b[j], b[j], AA[i][i]);
+        field_mult(f, h, b[i], AA[i][j]);
+        field_mult(f, b[j], b[j], AA[i][i]);
         field_add(b[j], b[j], h);
       }
     }
   }
-  field_invert(h, AA[n - 1][n - 1]);
-  field_mult(b[n - 1], b[n - 1], h);
+  field_invert(f, h, AA[n - 1][n - 1]);
+  field_mult(f, b[n - 1], b[n - 1], h);
   mpz_clear(h);
   return 0;
 }
@@ -334,14 +340,14 @@ void split(void)
       fprintf(stderr, "Using a %d bit security level.\n", opt_security);
   }
 
-  field_init(opt_security);
+  field *ssss = field_init(opt_security);
 
   mpz_init(coeff[0]);
-  field_import(coeff[0], buf, opt_hex);
+  field_import(ssss, coeff[0], buf, opt_hex);
 
   if (opt_diffusion) {
-    if (degree >= 64)
-      encode_mpz(degree, coeff[0], ENCODE);
+    if (ssss->degree >= 64)
+      encode_mpz(ssss->degree, coeff[0], ENCODE);
     else
       warning("security level too small for the diffusion layer");
   }
@@ -352,9 +358,9 @@ void split(void)
   for(i = 1; i < opt_threshold; i++) {
     mpz_init(coeff[i]);
     uint8_t buf[MAXDEGREE / 8];
-    if (cprng_read(cprng, buf, degree / 8) < 0)
+    if (cprng_read(cprng, buf, ssss->degree / 8) < 0)
       fatal(ssss_errmsg);
-    mpz_import(coeff[i], degree / 8, 1, 1, 0, 0, buf);
+    mpz_import(coeff[i], ssss->degree / 8, 1, 1, 0, 0, buf);
   }
   if (cprng_deinit(cprng) < 0)
     fatal(ssss_errmsg);
@@ -364,18 +370,18 @@ void split(void)
   mpz_init(y);
   for(i = 0; i < opt_number; i++) {
     mpz_set_ui(x, i + 1);
-    horner(opt_threshold, y, x, (const mpz_t*)coeff);
+    horner(ssss, opt_threshold, y, x, (const mpz_t*)coeff);
     if (opt_token)
       fprintf(stdout, "%s-", opt_token);
     fprintf(stdout, "%0*d-", fmt_len, i + 1);
-    field_print(stdout, y, 1);
+    field_print(ssss, stdout, y, 1);
   }
   mpz_clear(x);
   mpz_clear(y);
 
   for(i = 0; i < opt_threshold; i++)
     mpz_clear(coeff[i]);
-  field_deinit();
+  field_deinit(ssss);
 }
 
 /* Prompt for shares, calculate the secret */
@@ -387,6 +393,7 @@ void combine(void)
   char *a, *b;
   int i, j;
   unsigned s = 0;
+  field *ssss = NULL;
 
   mpz_init(x);
   if (! opt_quiet)
@@ -410,7 +417,7 @@ void combine(void)
       s = 4 * strlen(b);
       if (! field_size_valid(s))
         fatal("share has illegal length");
-      field_init(s);
+      ssss = field_init(s);
     } else if (s != 4 * strlen(b))
       fatal("shares have different security levels");
 
@@ -420,35 +427,35 @@ void combine(void)
     mpz_init_set_ui(A[opt_threshold - 1][i], 1);
     for(j = opt_threshold - 2; j >= 0; j--) {
       mpz_init(A[j][i]);
-      field_mult(A[j][i], A[j + 1][i], x);
+      field_mult(ssss, A[j][i], A[j + 1][i], x);
     }
     mpz_init(y[i]);
-    field_import(y[i], b, 1);
+    field_import(ssss, y[i], b, 1);
     /* Remove x^k term. See comment at top of horner() */
-    field_mult(x, x, A[0][i]);
+    field_mult(ssss, x, x, A[0][i]);
     field_add(y[i], y[i], x);
   }
   mpz_clear(x);
-  if (restore_secret(opt_threshold, A, y))
+  if (restore_secret(ssss, opt_threshold, A, y))
     fatal("shares inconsistent. Perhaps a single share was used twice");
 
   if (opt_diffusion) {
-    if (degree >= 64)
-      encode_mpz(degree, y[opt_threshold - 1], DECODE);
+    if (ssss->degree >= 64)
+      encode_mpz(ssss->degree, y[opt_threshold - 1], DECODE);
     else
       warning("security level too small for the diffusion layer");
   }
 
   if (! opt_quiet)
     fprintf(stderr, "Resulting secret: ");
-  field_print(stdout, y[opt_threshold - 1], opt_hex);
+  field_print(ssss, stdout, y[opt_threshold - 1], opt_hex);
 
   for (i = 0; i < opt_threshold; i++) {
     for (j = 0; j < opt_threshold; j++)
       mpz_clear(A[i][j]);
     mpz_clear(y[i]);
   }
-  field_deinit();
+  field_deinit(ssss);
 }
 
 int main(int argc, char *argv[])
