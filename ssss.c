@@ -55,6 +55,7 @@
 #include <gmp.h>
 #include "cprng.h"
 #include "field.h"
+#include "diffusion.h"
 
 #define VERSION "0.5.6"
 #define MAXDEGREE 1024
@@ -238,74 +239,6 @@ void field_invert(mpz_t z, const mpz_t x)
   mpz_clear(u); mpz_clear(v); mpz_clear(g); mpz_clear(h);
 }
 
-/* a 64 bit pseudo random permutation (based on the XTEA cipher) */
-
-void encipher_block(uint32_t *v)
-{
-  uint32_t sum = 0, delta = 0x9E3779B9;
-  int i;
-  for(i = 0; i < 32; i++) {
-    v[0] += (((v[1] << 4) ^ (v[1] >> 5)) + v[1]) ^ sum;
-    sum += delta;
-    v[1] += (((v[0] << 4) ^ (v[0] >> 5)) + v[0]) ^ sum;
-  }
-}
-
-void decipher_block(uint32_t *v)
-{
-  uint32_t sum = 0xC6EF3720, delta = 0x9E3779B9;
-  int i;
-  for(i = 0; i < 32; i++) {
-    v[1] -= ((v[0] << 4 ^ v[0] >> 5) + v[0]) ^ sum;
-    sum -= delta;
-    v[0] -= ((v[1] << 4 ^ v[1] >> 5) + v[1]) ^ sum;
-  }
-}
-
-void encode_slice(uint8_t *data, int idx, int len,
-                  void (*process_block)(uint32_t*))
-{
-  uint32_t v[2];
-  int i;
-  for(i = 0; i < 2; i++)
-    v[i] = data[(idx + 4 * i) % len] << 24 |
-      data[(idx + 4 * i + 1) % len] << 16 |
-      data[(idx + 4 * i + 2) % len] << 8 |
-      data[(idx + 4 * i + 3) % len];
-  process_block(v);
-  for(i = 0; i < 2; i++) {
-    data[(idx + 4 * i + 0) % len] = v[i] >> 24;
-    data[(idx + 4 * i + 1) % len] = (v[i] >> 16) & 0xff;
-    data[(idx + 4 * i + 2) % len] = (v[i] >> 8) & 0xff;
-    data[(idx + 4 * i + 3) % len] = v[i] & 0xff;
-  }
-}
-
-enum encdec {ENCODE, DECODE};
-
-void encode_mpz(mpz_t x, enum encdec encdecmode)
-{
-  uint8_t v[(MAXDEGREE + 8) / 16 * 2];
-  size_t t;
-  int i;
-  memset(v, 0, (degree + 8) / 16 * 2);
-  mpz_export(v, &t, -1, 2, 1, 0, x);
-  if (degree % 16 == 8)
-    v[degree / 8 - 1] = v[degree / 8];
-  if (encdecmode == ENCODE)             /* 40 rounds are more than enough!*/
-    for(i = 0; i < 40 * ((int)degree / 8); i += 2)
-      encode_slice(v, i, degree / 8, encipher_block);
-  else
-    for(i = 40 * (degree / 8) - 2; i >= 0; i -= 2)
-      encode_slice(v, i, degree / 8, decipher_block);
-  if (degree % 16 == 8) {
-    v[degree / 8] = v[degree / 8 - 1];
-    v[degree / 8 - 1] = 0;
-  }
-  mpz_import(x, (degree + 8) / 16, -1, 2, 1, 0, v);
-  assert(mpz_sizeinbits(x) <= degree);
-}
-
 /* evaluate polynomials efficiently
  * Note that this implementation adds an additional x^k term. This term is
  * subtracted off on recombining. This additional term neither adds nor removes
@@ -419,7 +352,7 @@ void split(void)
 
   if (opt_diffusion) {
     if (degree >= 64)
-      encode_mpz(coeff[0], ENCODE);
+      encode_mpz(degree, coeff[0], ENCODE);
     else
       warning("security level too small for the diffusion layer");
   }
@@ -512,7 +445,7 @@ void combine(void)
 
   if (opt_diffusion) {
     if (degree >= 64)
-      encode_mpz(y[opt_threshold - 1], DECODE);
+      encode_mpz(degree, y[opt_threshold - 1], DECODE);
     else
       warning("security level too small for the diffusion layer");
   }
