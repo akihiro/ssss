@@ -56,9 +56,9 @@
 #include <sys/mman.h>
 
 #include <gmp.h>
+#include "cprng.h"
 
 #define VERSION "0.5.4"
-#define RANDOM_SOURCE "/dev/random"
 #define MAXDEGREE 1024
 #define MAXTOKENLEN 128
 #define MAXLINELEN (MAXTOKENLEN + 1 + 10 + 1 + MAXDEGREE / 4 + 10)
@@ -88,10 +88,10 @@ int opt_security = 0;
 int opt_threshold = -1;
 int opt_number = -1;
 char *opt_token = NULL;
+char *ssss_errmsg = NULL;
 
 unsigned int degree;
 mpz_t poly;
-int cprng;
 struct termios echo_orig, echo_off;
 
 #define mpz_lshift(A, B, l) mpz_mul_2exp(A, B, l)
@@ -241,33 +241,6 @@ void field_invert(mpz_t z, const mpz_t x)
     mpz_xor(z, z, h);
   }
   mpz_clear(u); mpz_clear(v); mpz_clear(g); mpz_clear(h);
-}
-
-/* routines for the random number generator */
-
-void cprng_init(void)
-{
-  if ((cprng = open(RANDOM_SOURCE, O_RDONLY)) < 0)
-    fatal("couldn't open " RANDOM_SOURCE);
-}
-
-void cprng_deinit(void)
-{
-  if (close(cprng) < 0)
-    fatal("couldn't close " RANDOM_SOURCE);
-}
-
-void cprng_read(mpz_t x)
-{
-  char buf[MAXDEGREE / 8];
-  unsigned int count;
-  int i;
-  for(count = 0; count < degree / 8; count += i)
-    if ((i = read(cprng, buf + count, degree / 8 - count)) < 0) {
-      close(cprng);
-      fatal("couldn't read from " RANDOM_SOURCE);
-    }
-  mpz_import(x, degree / 8, 1, 1, 0, 0, buf);
 }
 
 /* a 64 bit pseudo random permutation (based on the XTEA cipher) */
@@ -455,12 +428,19 @@ void split(void)
       warning("security level too small for the diffusion layer");
   }
 
-  cprng_init();
+  int cprng;
+  if ((cprng = cprng_init()) < 0)
+    fatal(ssss_errmsg);
   for(i = 1; i < opt_threshold; i++) {
     mpz_init(coeff[i]);
-    cprng_read(coeff[i]);
+    uint8_t buf[MAXDEGREE / 8];
+    if (cprng_read(cprng, buf, degree / 8) < 0)
+      fatal(ssss_errmsg);
+    mpz_import(coeff[i], degree / 8, 1, 1, 0, 0, buf);
   }
-  cprng_deinit();
+  if (cprng_deinit(cprng) < 0)
+    fatal(ssss_errmsg);
+
 
   mpz_init(x);
   mpz_init(y);
