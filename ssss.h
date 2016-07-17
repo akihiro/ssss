@@ -44,23 +44,7 @@
  *
  */
 
-#define mpz_lshift(A, B, l) mpz_mul_2exp(A, B, l)
-#define mpz_sizeinbits(A) (mpz_cmp_ui(A, 0) ? mpz_sizeinbase(A, 2) : 0)
-
-typedef struct {
-  unsigned int degree;
-  mpz_t poly;
-} field;
-
-/* field arithmetic routines */
-int field_size_valid(int deg);
-
-/* initialize 'poly' to a bitfield representing the coefficients of an
-   irreducible polynomial of degree 'deg' */
-field* field_init(int deg);
-void field_deinit(field *f);
-
-/* basic field arithmetic in GF(2^deg) */
-void field_add(mpz_t z, const mpz_t x, const mpz_t y);
-void field_mult(const field *f, mpz_t z, const mpz_t x, const mpz_t y);
-void field_invert(const field *f, mpz_t z, const mpz_t x);
+#define VERSION "0.5.4"
+#define MAXDEGREE 1024
+#define MAXTOKENLEN 128
+#define MAXLINELEN (MAXTOKENLEN + 1 + 10 + 1 + MAXDEGREE / 4 + 10)
