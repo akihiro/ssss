@@ -54,6 +54,7 @@
 
 #include <gmp.h>
 #include "cprng.h"
+#include "field.h"
 
 #define VERSION "0.5.6"
 #define MAXDEGREE 1024
@@ -90,9 +91,6 @@ char *ssss_errmsg = NULL;
 unsigned int degree;
 mpz_t poly;
 struct termios echo_orig, echo_off;
-
-#define mpz_lshift(A, B, l) mpz_mul_2exp(A, B, l)
-#define mpz_sizeinbits(A) (mpz_cmp_ui(A, 0) ? mpz_sizeinbase(A, 2) : 0)
 
 /* emergency abort and warning functions */
 
