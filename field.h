@@ -59,3 +59,8 @@ int field_size_valid(int deg);
    irreducible polynomial of degree 'deg' */
 field* field_init(int deg);
 void field_deinit(field *f);
+
+/* basic field arithmetic in GF(2^deg) */
+void field_add(mpz_t z, const mpz_t x, const mpz_t y);
+void field_mult(const field *f, mpz_t z, const mpz_t x, const mpz_t y);
+void field_invert(const field *f, mpz_t z, const mpz_t x);
