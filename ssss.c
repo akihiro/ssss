@@ -104,13 +104,6 @@ void warning(char *msg)
     fprintf(stderr, "%sWARNING: %s.\n", isatty(2) ? "\a" : "", msg);
 }
 
-/* field arithmetic routines */
-
-int field_size_valid(int deg)
-{
-  return (deg >= 8) && (deg <= MAXDEGREE) && (deg % 8 == 0);
-}
-
 /* initialize 'poly' to a bitfield representing the coefficients of an
    irreducible polynomial of degree 'deg' */
 
