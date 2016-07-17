@@ -9,3 +9,4 @@
 
 # Generated HTML documentation:
 /ssss.1.html
+*.o
