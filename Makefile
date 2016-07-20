@@ -10,6 +10,7 @@ compile: ssss-split ssss-combine
 doc: ssss.1 ssss.1.html
 
 ssss-split: $(OBJS)
+	$(MAKE) -C libssss build
 	$(CC) $(CFLAGS) -o ssss-split $(OBJS) $(LIBFLAGS)
 	strip ssss-split
 
