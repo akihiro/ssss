@@ -44,7 +44,12 @@
  *
  */
 
+#ifndef SSSS_H
+#define SSSS_H
+
 #define VERSION "0.5.4"
 #define MAXDEGREE 1024
 #define MAXTOKENLEN 128
 #define MAXLINELEN (MAXTOKENLEN + 1 + 10 + 1 + MAXDEGREE / 4 + 10)
+
+#endif

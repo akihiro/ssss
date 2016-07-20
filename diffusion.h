@@ -44,9 +44,14 @@
  *
  */
 
+#ifndef DEFFUSION_H
+#define DEFFUSION_H
+
 #include <gmp.h>
 
 enum encdec {ENCODE, DECODE};
 
 /* a 64 bit pseudo random permutation (based on the XTEA cipher) */
 void encode_mpz(unsigned int degree, mpz_t x, enum encdec encdecmode);
+
+#endif
