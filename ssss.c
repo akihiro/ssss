@@ -248,14 +248,15 @@ void split(void)
       fprintf(stderr, "Using a %d bit security level.\n", opt_security);
   }
 
-  field *ssss = field_init(opt_security);
+  field ssss;
+  field_init(&ssss, opt_security);
 
   mpz_init(coeff[0]);
-  field_import(ssss, coeff[0], buf, opt_hex);
+  field_import(&ssss, coeff[0], buf, opt_hex);
 
   if (opt_diffusion) {
-    if (ssss->degree >= 64)
-      encode_mpz(ssss->degree, coeff[0], ENCODE);
+    if (ssss.degree >= 64)
+      encode_mpz(ssss.degree, coeff[0], ENCODE);
     else
       warning("security level too small for the diffusion layer");
   }
@@ -266,9 +267,9 @@ void split(void)
   for(i = 1; i < opt_threshold; i++) {
     mpz_init(coeff[i]);
     uint8_t buf[MAXDEGREE / 8];
-    if (cprng->read(cprng->data, buf, ssss->degree / 8) < 0)
+    if (cprng->read(cprng->data, buf, ssss.degree / 8) < 0)
       fatal("Cant't read cprng");
-    mpz_import(coeff[i], ssss->degree / 8, 1, 1, 0, 0, buf);
+    mpz_import(coeff[i], ssss.degree / 8, 1, 1, 0, 0, buf);
   }
   ssss_cprng_free(cprng);
 
@@ -277,18 +278,18 @@ void split(void)
   mpz_init(y);
   for(i = 0; i < opt_number; i++) {
     mpz_set_ui(x, i + 1);
-    horner(ssss, opt_threshold, y, x, (const mpz_t*)coeff);
+    horner(&ssss, opt_threshold, y, x, (const mpz_t*)coeff);
     if (opt_token)
       fprintf(stdout, "%s-", opt_token);
     fprintf(stdout, "%0*d-", fmt_len, i + 1);
-    field_print(ssss, stdout, y, 1);
+    field_print(&ssss, stdout, y, 1);
   }
   mpz_clear(x);
   mpz_clear(y);
 
   for(i = 0; i < opt_threshold; i++)
     mpz_clear(coeff[i]);
-  field_deinit(ssss);
+  field_deinit(&ssss);
 }
 
 /* Prompt for shares, calculate the secret */
@@ -300,7 +301,7 @@ void combine(void)
   char *a, *b;
   int i, j;
   unsigned s = 0;
-  field *ssss = NULL;
+  field ssss;
 
   mpz_init(x);
   if (! opt_quiet)
@@ -324,7 +325,7 @@ void combine(void)
       s = 4 * strlen(b);
       if (! field_size_valid(s))
         fatal("share has illegal length");
-      ssss = field_init(s);
+      field_init(&ssss, s);
     } else if (s != 4 * strlen(b))
       fatal("shares have different security levels");
 
@@ -334,35 +335,35 @@ void combine(void)
     mpz_init_set_ui(A[opt_threshold - 1][i], 1);
     for(j = opt_threshold - 2; j >= 0; j--) {
       mpz_init(A[j][i]);
-      field_mult(ssss, A[j][i], A[j + 1][i], x);
+      field_mult(&ssss, A[j][i], A[j + 1][i], x);
     }
     mpz_init(y[i]);
-    field_import(ssss, y[i], b, 1);
+    field_import(&ssss, y[i], b, 1);
     /* Remove x^k term. See comment at top of horner() */
-    field_mult(ssss, x, x, A[0][i]);
+    field_mult(&ssss, x, x, A[0][i]);
     field_add(y[i], y[i], x);
   }
   mpz_clear(x);
-  if (restore_secret(ssss, opt_threshold, A, y))
+  if (restore_secret(&ssss, opt_threshold, A, y))
     fatal("shares inconsistent. Perhaps a single share was used twice");
 
   if (opt_diffusion) {
-    if (ssss->degree >= 64)
-      encode_mpz(ssss->degree, y[opt_threshold - 1], DECODE);
+    if (ssss.degree >= 64)
+      encode_mpz(ssss.degree, y[opt_threshold - 1], DECODE);
     else
       warning("security level too small for the diffusion layer");
   }
 
   if (! opt_quiet)
     fprintf(stderr, "Resulting secret: ");
-  field_print(ssss, stdout, y[opt_threshold - 1], opt_hex);
+  field_print(&ssss, stdout, y[opt_threshold - 1], opt_hex);
 
   for (i = 0; i < opt_threshold; i++) {
     for (j = 0; j < opt_threshold; j++)
       mpz_clear(A[i][j]);
     mpz_clear(y[i]);
   }
-  field_deinit(ssss);
+  field_deinit(&ssss);
 }
 
 int main(int argc, char *argv[])

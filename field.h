@@ -57,7 +57,7 @@ int field_size_valid(int deg);
 
 /* initialize 'poly' to a bitfield representing the coefficients of an
    irreducible polynomial of degree 'deg' */
-field* field_init(int deg);
+void field_init(field *f, int deg);
 void field_deinit(field *f);
 
 /* basic field arithmetic in GF(2^deg) */
