@@ -44,6 +44,9 @@
  *
  */
 
+#ifndef FIELD_H
+#define FIELD_H
+
 #define mpz_lshift(A, B, l) mpz_mul_2exp(A, B, l)
 #define mpz_sizeinbits(A) (mpz_cmp_ui(A, 0) ? mpz_sizeinbase(A, 2) : 0)
 
@@ -64,3 +67,5 @@ void field_deinit(field *f);
 void field_add(mpz_t z, const mpz_t x, const mpz_t y);
 void field_mult(const field *f, mpz_t z, const mpz_t x, const mpz_t y);
 void field_invert(const field *f, mpz_t z, const mpz_t x);
+
+#endif
