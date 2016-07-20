@@ -78,14 +78,9 @@ int field_size_valid(int deg)
 /* initialize 'poly' to a bitfield representing the coefficients of an
    irreducible polynomial of degree 'deg' */
 
-field* field_init(int deg)
+void field_init(field *f, int deg)
 {
   assert(field_size_valid(deg));
-  field *f = (field*)malloc(sizeof(field));
-  if (f == NULL) {
-    ssss_errmsg = "memory allocation failure";
-    return NULL;
-  }
   mpz_init_set_ui(f->poly, 0);
   mpz_setbit(f->poly, deg);
   mpz_setbit(f->poly, irred_coeff[3 * (deg / 8 - 1) + 0]);
@@ -93,13 +88,11 @@ field* field_init(int deg)
   mpz_setbit(f->poly, irred_coeff[3 * (deg / 8 - 1) + 2]);
   mpz_setbit(f->poly, 0);
   f->degree = deg;
-  return f;
 }
 
 void field_deinit(field *f)
 {
   mpz_clear(f->poly);
-  free(f);
 }
 
 /* basic field arithmetic in GF(2^deg) */
