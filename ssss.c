@@ -56,6 +56,7 @@
 #include <ssss.h>
 #include "ssss.h"
 #include "field.h"
+#include "algo.h"
 #include "diffusion.h"
 
 int opt_showversion = 0;
@@ -137,73 +138,6 @@ void field_print(const field *f, FILE* stream, const mpz_t x, int hexmode)
     if (warn)
       warning("binary data detected, use -x mode instead");
   }
-}
-
-/* evaluate polynomials efficiently
- * Note that this implementation adds an additional x^k term. This term is
- * subtracted off on recombining. This additional term neither adds nor removes
- * security but is left solely for legacy reasons.
- */
- 
-void horner(field *f, int n, mpz_t y, const mpz_t x, const mpz_t coeff[])
-{
-  int i;
-  mpz_set(y, x);
-  for(i = n - 1; i; i--) {
-    field_add(y, y, coeff[i]);
-    field_mult(f, y, y, x);
-  }
-  field_add(y, y, coeff[0]);
-}
-
-/* calculate the secret from a set of shares solving a linear equation system */
-
-#define MPZ_SWAP(A, B) \
-  do { mpz_set(h, A); mpz_set(A, B); mpz_set(B, h); } while(0)
-
-int restore_secret(const field *f,
-                   int n,
-#ifdef USE_RESTORE_SECRET_WORKAROUND
-                   void *A,
-#else
-                   mpz_t (*A)[n],
-#endif
-                   mpz_t b[])
-{
-  mpz_t (*AA)[n] = (mpz_t (*)[n])A;
-  int i, j, k, found;
-  mpz_t h;
-  mpz_init(h);
-  for(i = 0; i < n; i++) {
-    if (! mpz_cmp_ui(AA[i][i], 0)) {
-      for(found = 0, j = i + 1; j < n; j++)
-        if (mpz_cmp_ui(AA[i][j], 0)) {
-          found = 1;
-          break;
-        }
-      if (! found)
-        return -1;
-      for(k = i; k < n; k++)
-        MPZ_SWAP(AA[k][i], AA[k][j]);
-      MPZ_SWAP(b[i], b[j]);
-    }
-    for(j = i + 1; j < n; j++) {
-      if (mpz_cmp_ui(AA[i][j], 0)) {
-        for(k = i + 1; k < n; k++) {
-          field_mult(f, h, AA[k][i], AA[i][j]);
-          field_mult(f, AA[k][j], AA[k][j], AA[i][i]);
-          field_add(AA[k][j], AA[k][j], h);
-        }
-        field_mult(f, h, b[i], AA[i][j]);
-        field_mult(f, b[j], b[j], AA[i][i]);
-        field_add(b[j], b[j], h);
-      }
-    }
-  }
-  field_invert(f, h, AA[n - 1][n - 1]);
-  field_mult(f, b[n - 1], b[n - 1], h);
-  mpz_clear(h);
-  return 0;
 }
 
 /* Prompt for a secret, generate shares for it */
