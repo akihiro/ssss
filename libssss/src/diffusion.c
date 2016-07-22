@@ -47,15 +47,15 @@
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
+#include <stdlib.h>
 
-#include <gmp.h>
-#include "field.h"
+#include <ssss.h>
 
-enum encdec {ENCODE, DECODE};
+//enum encdec {ENCODE, DECODE};
 
 /* a 64 bit pseudo random permutation (based on the XTEA cipher) */
 
-void encipher_block(uint32_t *v)
+static void encipher_block(uint32_t *v)
 {
   uint32_t sum = 0, delta = 0x9E3779B9;
   int i;
@@ -66,7 +66,7 @@ void encipher_block(uint32_t *v)
   }
 }
 
-void decipher_block(uint32_t *v)
+static void decipher_block(uint32_t *v)
 {
   uint32_t sum = 0xC6EF3720, delta = 0x9E3779B9;
   int i;
@@ -77,7 +77,7 @@ void decipher_block(uint32_t *v)
   }
 }
 
-void encode_slice(uint8_t *data, int idx, int len,
+static void encode_slice(uint8_t *data, int idx, int len,
                   void (*process_block)(uint32_t*))
 {
   uint32_t v[2];
@@ -96,25 +96,25 @@ void encode_slice(uint8_t *data, int idx, int len,
   }
 }
 
-void encode_mpz(unsigned int degree, mpz_t x, enum encdec encdecmode)
+void ssss_encode_mpz(size_t bytes, uint8_t *buf, enum encdec encdecmode)
 {
-  uint8_t v[(degree + 8) / 16 * 2];
-  size_t t;
+  int isodd = bytes % 2 == 1;
+  unsigned int len = bytes + (isodd ? 1 : 0);
+  uint8_t *v = (uint8_t*)calloc(1,len);
   int i;
-  memset(v, 0, (degree + 8) / 16 * 2);
-  mpz_export(v, &t, -1, 2, 1, 0, x);
-  if (degree % 16 == 8)
-    v[degree / 8 - 1] = v[degree / 8];
+  memcpy(v, buf, bytes);
+  if (isodd)
+    v[bytes - 1] = v[bytes];
   if (encdecmode == ENCODE)             /* 40 rounds are more than enough!*/
-    for(i = 0; i < 40 * ((int)degree / 8); i += 2)
-      encode_slice(v, i, degree / 8, encipher_block);
+    for(i = 0; i < 40 * (int)bytes; i += 2)
+      encode_slice(v, i, bytes, encipher_block);
   else
-    for(i = 40 * (degree / 8) - 2; i >= 0; i -= 2)
-      encode_slice(v, i, degree / 8, decipher_block);
-  if (degree % 16 == 8) {
-    v[degree / 8] = v[degree / 8 - 1];
-    v[degree / 8 - 1] = 0;
+    for(i = 40 * bytes - 2; i >= 0; i -= 2)
+      encode_slice(v, i, bytes, decipher_block);
+  if (isodd) {
+    v[bytes] = v[bytes - 1];
+    v[bytes - 1] = 0;
   }
-  mpz_import(x, (degree + 8) / 16, -1, 2, 1, 0, v);
-  assert(mpz_sizeinbits(x) <= degree);
+  memcpy(buf, v, bytes);
+  free(v);
 }

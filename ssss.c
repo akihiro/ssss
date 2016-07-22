@@ -58,9 +58,6 @@
 #include <gmp.h>
 #include <ssss.h>
 #include "ssss.h"
-#include "field.h"
-#include "algo.h"
-#include "diffusion.h"
 
 int opt_showversion = 0;
 int opt_help = 0;
@@ -93,46 +90,54 @@ void warning(char *msg)
 
 /* I/O routines for GF(2^deg) field elements */
 
-void field_import(const field *f, mpz_t x, const char *s, int hexmode)
+void str_import(uint8_t *bin, size_t len, const char *s, int hexmode)
 {
+  size_t l = strlen(s);
   if (hexmode) {
-    if (strlen(s) > f->degree / 4)
+    mpz_t x;
+    mpz_init(x);
+    if (l > len * 2)
       fatal("input string too long");
-    if (strlen(s) < f->degree / 4)
+    if (l < len * 2)
       warning("input string too short, adding null padding on the left");
     if (mpz_set_str(x, s, 16) || (mpz_cmp_ui(x, 0) < 0))
       fatal("invalid syntax");
+    if (len < (mpz_sizeinbase(x, 2) + 7)/8 )
+      fatal("input number too big");
+    mpz_export(bin, NULL, 1, 1, 0, 0, x);
+    mpz_clear(x);
   }
   else {
     int i;
     int warn = 0;
-    if (strlen(s) > f->degree / 8)
+    if (l > len)
       fatal("input string too long");
-    for(i = strlen(s) - 1; i >= 0; i--)
+    for(i = l - 1; i >= 0; i--)
       warn = warn || (s[i] < 32) || (s[i] >= 127);
     if (warn)
       warning("binary data detected, use -x mode instead");
-    mpz_import(x, strlen(s), 1, 1, 0, 0, s);
+    memset(bin, 0, len);
+    memcpy(bin, s, l);
   }
 }
 
-void field_print(const field *f, FILE* stream, const mpz_t x, int hexmode)
+void str_print(FILE* stream, const uint8_t *buf, size_t len, int hexmode)
 {
   int i;
   if (hexmode) {
-    for(i = f->degree / 4 - mpz_sizeinbase(x, 16); i; i--)
+    mpz_t x;
+    mpz_init(x);
+    mpz_import(x, len, 1, 1, 0, 0, buf);
+    for(i = len * 2 - mpz_sizeinbase(x, 16); i; i--)
       fprintf(stream, "0");
     mpz_out_str(stream, 16, x);
+    mpz_clear(x);
     fprintf(stream, "\n");
   }
   else {
-    char buf[MAXDEGREE / 8 + 1];
-    size_t t;
     unsigned int i;
     int printable, warn = 0;
-    memset(buf, 0, f->degree / 8 + 1);
-    mpz_export(buf, &t, 1, 1, 0, 0, x);
-    for(i = 0; i < t; i++) {
+    for(i = 0; i < len; i++) {
       printable = (buf[i] >= 32) && (buf[i] < 127);
       warn = warn || ! printable;
       fprintf(stream, "%c", printable ? buf[i] : '.');
@@ -147,11 +152,7 @@ void field_print(const field *f, FILE* stream, const mpz_t x, int hexmode)
 
 void split(void)
 {
-  unsigned int fmt_len;
-  mpz_t x, y, coeff[opt_threshold];
   char buf[MAXLINELEN];
-  int deg, i;
-  for(fmt_len = 1, i = opt_number; i >= 10; i /= 10, fmt_len++);
   if (! opt_quiet) {
     fprintf(stderr, "Generating shares using a (%d,%d) scheme with ",
             opt_threshold, opt_number);
@@ -161,7 +162,7 @@ void split(void)
       fprintf(stderr, "dynamic");
     fprintf(stderr, " security level.\n");
 
-    deg = opt_security ? opt_security : MAXDEGREE;
+    int deg = opt_security ? opt_security : MAXDEGREE;
     fprintf(stderr, "Enter the secret, ");
     if (opt_hex)
       fprintf(stderr, "as most %d hex digits: ", deg / 4);
@@ -176,128 +177,133 @@ void split(void)
 
   if (! opt_security) {
     opt_security = opt_hex ? 4 * ((strlen(buf) + 1) & ~1): 8 * strlen(buf);
-    if (! field_size_valid(opt_security))
+    if (opt_security % 8 != 0 || opt_security < 8)
       fatal("security level invalid (secret too long?)");
     if (! opt_quiet)
       fprintf(stderr, "Using a %d bit security level.\n", opt_security);
   }
 
-  field ssss;
-  field_init(&ssss, opt_security);
+  ssss_cprng *cprng = ssss_cprng_alloc();
+  if (cprng == NULL)
+    fatal("Can't setup cprng");
 
-  mpz_init(coeff[0]);
-  field_import(&ssss, coeff[0], buf, opt_hex);
+  size_t len_secret = opt_security / 8;
+  if (opt_security % 8 != 0) len_secret++;
+  uint8_t *secret = calloc(1, len_secret);
+  if (secret == NULL)
+    fatal("Can't allocation memory");
+  size_t len_share  = ssss_size_share(len_secret);
+  uint8_t *shares = calloc(1, len_share*opt_number);
+  if (shares == NULL)
+    fatal("Can't allocation memory");
+
+  str_import(secret, len_secret, buf, opt_hex);
 
   if (opt_diffusion) {
-    if (ssss.degree >= 64)
-      encode_mpz(ssss.degree, coeff[0], ENCODE);
+    if (len_secret >= 8 )
+      ssss_encode_mpz(len_secret, secret, ENCODE);
     else
       warning("security level too small for the diffusion layer");
   }
 
-  ssss_cprng *cprng = ssss_cprng_alloc();
-  if (cprng == NULL)
-    fatal("Can't setup cprng");
-  for(i = 1; i < opt_threshold; i++) {
-    mpz_init(coeff[i]);
-    uint8_t buf[MAXDEGREE / 8];
-    if (cprng->read(cprng->data, buf, ssss.degree / 8) < 0)
-      fatal("Cant't read cprng");
-    mpz_import(coeff[i], ssss.degree / 8, 1, 1, 0, 0, buf);
+  int ret ;
+  if (ret = ssss_split(secret, shares, len_secret, opt_number, opt_threshold, cprng))
+  {
+	  printf("%d ", ret);
+	fatal("invalid");
   }
-  ssss_cprng_free(cprng);
 
-
-  mpz_init(x);
-  mpz_init(y);
-  for(i = 0; i < opt_number; i++) {
-    mpz_set_ui(x, i + 1);
-    horner(&ssss, opt_threshold, y, x, (const mpz_t*)coeff);
+  unsigned int fmt_len;
+  int i;
+  for(fmt_len = 1, i = opt_number; i >= 10; i /= 10, fmt_len++);
+  uint8_t *ptr;
+  for(i = 0,ptr = shares; i < opt_number; i++, ptr += len_share) {
     if (opt_token)
       fprintf(stdout, "%s-", opt_token);
-    fprintf(stdout, "%0*d-", fmt_len, i + 1);
-    field_print(&ssss, stdout, y, 1);
+    ssss_index_t *idx = (ssss_index_t*)ptr;
+    fprintf(stdout, "%0*d-", fmt_len, idx[1]);
+    str_print(stdout, (uint8_t*)&(idx[2]), len_secret, 1);
   }
-  mpz_clear(x);
-  mpz_clear(y);
 
-  for(i = 0; i < opt_threshold; i++)
-    mpz_clear(coeff[i]);
-  field_deinit(&ssss);
+  memset(secret, 0, len_secret);
+  free(shares);
+  free(secret);
+  ssss_cprng_free(cprng);
 }
 
 /* Prompt for shares, calculate the secret */
 
 void combine(void)
 {
-  mpz_t A[opt_threshold][opt_threshold], y[opt_threshold], x;
-  char buf[MAXLINELEN];
-  char *a, *b;
-  int i, j;
-  unsigned s = 0;
-  field ssss;
+	char buf[MAXLINELEN];
+	int i;
+	size_t len_secret = 0;
+	size_t len_share = 0;
+	uint8_t *shares = NULL;
+	uint8_t *ptr = NULL;
 
-  mpz_init(x);
-  if (! opt_quiet)
-    fprintf(stderr, "Enter %d shares separated by newlines:\n", opt_threshold);
-  for (i = 0; i < opt_threshold; i++) {
-    if (! opt_quiet)
-      fprintf(stderr, "Share [%d/%d]: ", i + 1, opt_threshold);
+	if (! opt_quiet)
+		fprintf(stderr, "Enter %d shares separated by newlines:\n", opt_threshold);
+	for (i = 0; i < opt_threshold; i++, ptr += len_share) {
+		if (! opt_quiet)
+			fprintf(stderr, "Share [%d/%d]: ", i + 1, opt_threshold);
 
-    if (! fgets(buf, sizeof(buf), stdin))
-      fatal("I/O error while reading shares");
-    buf[strcspn(buf, "\r\n")] = '\0';
-    if (! (a = strchr(buf, '-')))
-      fatal("invalid syntax");
-    *a++ = 0;
-    if ((b = strchr(a, '-')))
-      *b++ = 0;
-    else
-      b = a, a = buf;
+		if (! fgets(buf, sizeof(buf), stdin))
+			fatal("I/O error while reading shares");
+		buf[strcspn(buf, "\r\n")] = '\0';
+		char *a, *b;
+		if (! (a = strchr(buf, '-')))
+			fatal("invalid syntax");
+		*a++ = 0;
+		if ((b = strchr(a, '-')))
+			*b++ = 0;
+		else
+			b = a, a = buf;
 
-    if (! s) {
-      s = 4 * strlen(b);
-      if (! field_size_valid(s))
-        fatal("share has illegal length");
-      field_init(&ssss, s);
-    } else if (s != 4 * strlen(b))
-      fatal("shares have different security levels");
+		// set security bits and malloc *shares
+		if (len_secret == 0) {
+			// when first loop
+			size_t security_bits = 4 * strlen(b);
+			if (security_bits % 8 != 0 || security_bits < 8)
+				fatal("share has illegal length");
 
-    if (! (j = atoi(a)))
-      fatal("invalid share");
-    mpz_set_ui(x, j);
-    mpz_init_set_ui(A[opt_threshold - 1][i], 1);
-    for(j = opt_threshold - 2; j >= 0; j--) {
-      mpz_init(A[j][i]);
-      field_mult(&ssss, A[j][i], A[j + 1][i], x);
-    }
-    mpz_init(y[i]);
-    field_import(&ssss, y[i], b, 1);
-    /* Remove x^k term. See comment at top of horner() */
-    field_mult(&ssss, x, x, A[0][i]);
-    field_add(y[i], y[i], x);
-  }
-  mpz_clear(x);
-  if (restore_secret(&ssss, opt_threshold, A, y))
-    fatal("shares inconsistent. Perhaps a single share was used twice");
+			len_secret = security_bits / 8;
+			len_share = ssss_size_share(len_secret);
+			ptr = shares = (uint8_t*)calloc(len_share, opt_threshold);
+			if (shares == NULL)
+				fatal("Can't allocation memory");
+		} else {
+			// when non first loop
+			if (len_secret*2 != strlen(b))
+				fatal("shares have different security levels");
+		}
 
-  if (opt_diffusion) {
-    if (ssss.degree >= 64)
-      encode_mpz(ssss.degree, y[opt_threshold - 1], DECODE);
-    else
-      warning("security level too small for the diffusion layer");
-  }
+		// set x
+		ssss_index_t *meta_ptr = (ssss_index_t*)ptr;
+		ssss_index_t x = atoi(a);
+		if (x == 0)
+			fatal("invalid share");
+		meta_ptr[0] = opt_threshold;
+		meta_ptr[1] = x;
+		str_import(ptr + sizeof(ssss_index_t)*2, len_secret, b, 1);
+	}
 
-  if (! opt_quiet)
-    fprintf(stderr, "Resulting secret: ");
-  field_print(&ssss, stdout, y[opt_threshold - 1], opt_hex);
+	uint8_t data[MAXDEGREE];
+	if (ssss_combine(shares, data, len_secret, opt_threshold))
+		fatal("shares inconsistent. Perhaps a single share was used twice");
 
-  for (i = 0; i < opt_threshold; i++) {
-    for (j = 0; j < opt_threshold; j++)
-      mpz_clear(A[i][j]);
-    mpz_clear(y[i]);
-  }
-  field_deinit(&ssss);
+	if (opt_diffusion) {
+		if (len_secret >= 8)
+			ssss_encode_mpz(len_secret, data, DECODE);
+	else
+		warning("security level too small for the diffusion layer");
+	}
+
+	if (! opt_quiet)
+		fprintf(stderr, "Resulting secret: ");
+	str_print(stdout, data, len_secret, opt_hex);
+
+	free(shares);
 }
 
 int main(int argc, char *argv[])
@@ -390,7 +396,7 @@ int main(int argc, char *argv[])
     if (opt_number < opt_threshold)
       fatal("invalid parameters: number of shares smaller than threshold");
 
-    if (opt_security && ! field_size_valid(opt_security))
+    if (opt_security && (opt_security % 8 != 0 || opt_security < 8))
       fatal("invalid parameters: invalid security level");
 
     if (opt_token && (strlen(opt_token) > MAXTOKENLEN))

@@ -48,7 +48,8 @@
 #include <stdlib.h>
 
 #include <gmp.h>
-#include "ssss.h"
+#include <ssss.h>
+
 #include "field.h"
 
 extern char *ssss_errmsg;
@@ -72,7 +73,7 @@ static const unsigned char irred_coeff[] = {
 
 int field_size_valid(int deg)
 {
-  return (deg >= 8) && (deg <= MAXDEGREE) && (deg % 8 == 0);
+  return (deg >= 8) && (deg % 8 == 0);
 }
 
 /* initialize 'poly' to a bitfield representing the coefficients of an
