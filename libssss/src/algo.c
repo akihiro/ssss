@@ -44,6 +44,8 @@
  *
  */
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <gmp.h>
 #include "ssss.h"
 #include "field.h"
@@ -54,7 +56,7 @@
  * security but is left solely for legacy reasons.
  */
 
-void horner(field *f, int n, mpz_t y, const mpz_t x, const mpz_t coeff[])
+static void horner(field *f, int n, mpz_t y, const mpz_t x, const mpz_t coeff[])
 {
   int i;
   mpz_set(y, x);
@@ -70,7 +72,7 @@ void horner(field *f, int n, mpz_t y, const mpz_t x, const mpz_t coeff[])
 #define MPZ_SWAP(A, B) \
   do { mpz_set(h, A); mpz_set(A, B); mpz_set(B, h); } while(0)
 
-int restore_secret(const field *f,
+static int restore_secret(const field *f,
                    int n,
 #ifdef USE_RESTORE_SECRET_WORKAROUND
                    void *A,
@@ -114,3 +116,138 @@ int restore_secret(const field *f,
   mpz_clear(h);
   return 0;
 }
+
+size_t ssss_size_share(size_t secret)
+{
+	return secret + sizeof(ssss_index_t)*2;
+}
+
+int ssss_split(const uint8_t *secret, uint8_t *shares, size_t len_secret, ssss_index_t share, size_t threshold, ssss_cprng *cprng)
+{
+	char is_default_cprng = 0;
+	int ret = 0;
+	ssss_index_t i;
+	// check arguments
+	if (secret == NULL) return -1;
+	if (shares == NULL) return -2;
+	if (len_secret <= 0) return -3;
+	if (share <= 0) return -4;
+	if (threshold <= 0 || threshold > share) return -5;
+	if (cprng == NULL) {
+		cprng = ssss_cprng_alloc();
+		if (cprng == NULL) return -6;
+		is_default_cprng = 1;
+	}
+
+	uint8_t *buf = (uint8_t*)malloc(len_secret);
+	if (buf == NULL) {
+		ret = 1;
+		goto err_buf;
+	}
+
+	field f;
+	field_init(&f, len_secret * 8);
+	mpz_t *a, y, x;
+	a = (mpz_t*)malloc(sizeof(mpz_t)*threshold);
+	if (a == NULL) {
+		ret = 2;
+		goto err_a;
+	}
+	for (i = 0; i < threshold; ++i)
+		mpz_init(a[i]);
+
+	mpz_init(y);
+	mpz_init(x);
+
+	// setup a[]
+	mpz_import (a[0], len_secret, 1, 1, 0, 0, secret);
+	for (i = 1; i < threshold; ++i) {
+		if (cprng->read(cprng->data, buf, len_secret)) {
+			ret = 3;
+			goto err_read;
+		}
+		mpz_import(a[i], len_secret, 1, 1, 0, 0, buf);
+	}
+
+	uint8_t *ptr;
+	size_t len_share = ssss_size_share(len_secret);
+	for (i = 0, ptr = shares; i < share; ++i, ptr += len_share) {
+		mpz_set_ui(x, i + 1);
+		horner(&f, threshold, y, x, (const mpz_t*)a);
+		ssss_index_t *meta = (ssss_index_t*)ptr;
+		meta[0] = threshold;
+		meta[1] = i + 1;
+		mpz_export(ptr + sizeof(ssss_index_t)*2, NULL, 1, 1, 0, 0, y);
+	}
+
+	mpz_clear(x);
+	mpz_clear(y);
+	for (i = 0; i < threshold; ++i)
+		mpz_clear(a[i]);
+err_read:
+	free(a);
+err_a:
+	free(buf);
+err_buf:
+	if (is_default_cprng) ssss_cprng_free(cprng);
+	return ret;
+}
+
+int ssss_combine(const uint8_t *shares, uint8_t *secret, size_t len_secret, ssss_index_t threshold)
+{
+	int ret = 0;
+	ssss_index_t i,j;
+	// check arguments
+	if (shares == NULL) return -1;
+	if (secret == NULL) return -2;
+	if (len_secret <= 0) return -3;
+	if (threshold <= 0) return -4;
+
+	// initialize variables
+	mpz_t A[threshold][threshold], y[threshold], x;
+	for(i = 0; i < threshold; ++i) {
+		for (j = 0; j < threshold; ++j)
+			mpz_init(A[i][j]);
+		mpz_init(y[i]);
+	}
+	mpz_init(x);
+	field f;
+	field_init(&f, len_secret * 8);
+
+	const uint8_t *ptr;
+	size_t len_share = ssss_size_share(len_secret);
+	for (i = 0, ptr = shares; i < threshold; ++i, ptr += len_share) {
+		ssss_index_t *meta = (ssss_index_t*)ptr;
+		if (meta[0] > threshold) {
+			ret = -1;
+			goto clean;
+		}
+		mpz_set_ui(x, meta[1]);
+		mpz_set_ui(A[threshold - 1][i], 1);
+		j = threshold - 2;
+		do {
+			field_mult(&f, A[j][i], A[j+1][i], x);
+		}while(j-- > 0);
+		mpz_import(y[i], len_secret, 1, 1, 0, 0, ptr + sizeof(ssss_index_t)*2);
+		//
+		field_mult(&f, x, x, A[0][i]);
+		field_add(y[i], y[i], x);
+	}
+
+	ret = restore_secret(&f, threshold, A, y);
+	if (ret != 0) goto clean;
+
+	mpz_export(secret, NULL, 1, 1, 0, 0, y[threshold - 1]);
+
+clean:
+	// release resource
+	field_deinit(&f);
+	for(i = 0; i < threshold; ++i) {
+		for (j = 0; j < threshold; ++j)
+			mpz_clear(A[i][j]);
+		mpz_clear(y[i]);
+	}
+	mpz_clear(x);
+	return ret;
+}
+
