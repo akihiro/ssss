@@ -191,11 +191,11 @@ void split(void)
   if (opt_security % 8 != 0) len_secret++;
   uint8_t *secret = calloc(1, len_secret);
   if (secret == NULL)
-    fatal("Can't allocation memory");
+    fatal("Can't allocate memory");
   size_t len_share  = ssss_size_share(len_secret);
   uint8_t *shares = calloc(1, len_share*opt_number);
   if (shares == NULL)
-    fatal("Can't allocation memory");
+    fatal("Can't allocate memory");
 
   str_import(secret, len_secret, buf, opt_hex);
 
