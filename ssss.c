@@ -209,8 +209,8 @@ void split(void)
   int ret ;
   if (ret = ssss_split(secret, shares, len_secret, opt_number, opt_threshold, cprng))
   {
-	  printf("%d ", ret);
-	fatal("invalid");
+    printf("%d ", ret);
+  fatal("invalid");
   }
 
   unsigned int fmt_len;
@@ -235,75 +235,75 @@ void split(void)
 
 void combine(void)
 {
-	char buf[MAXLINELEN];
-	int i;
-	size_t len_secret = 0;
-	size_t len_share = 0;
-	uint8_t *shares = NULL;
-	uint8_t *ptr = NULL;
+  char buf[MAXLINELEN];
+  int i;
+  size_t len_secret = 0;
+  size_t len_share = 0;
+  uint8_t *shares = NULL;
+  uint8_t *ptr = NULL;
 
-	if (! opt_quiet)
-		fprintf(stderr, "Enter %d shares separated by newlines:\n", opt_threshold);
-	for (i = 0; i < opt_threshold; i++, ptr += len_share) {
-		if (! opt_quiet)
-			fprintf(stderr, "Share [%d/%d]: ", i + 1, opt_threshold);
+  if (! opt_quiet)
+    fprintf(stderr, "Enter %d shares separated by newlines:\n", opt_threshold);
+  for (i = 0; i < opt_threshold; i++, ptr += len_share) {
+    if (! opt_quiet)
+      fprintf(stderr, "Share [%d/%d]: ", i + 1, opt_threshold);
 
-		if (! fgets(buf, sizeof(buf), stdin))
-			fatal("I/O error while reading shares");
-		buf[strcspn(buf, "\r\n")] = '\0';
-		char *a, *b;
-		if (! (a = strchr(buf, '-')))
-			fatal("invalid syntax");
-		*a++ = 0;
-		if ((b = strchr(a, '-')))
-			*b++ = 0;
-		else
-			b = a, a = buf;
+    if (! fgets(buf, sizeof(buf), stdin))
+      fatal("I/O error while reading shares");
+    buf[strcspn(buf, "\r\n")] = '\0';
+    char *a, *b;
+    if (! (a = strchr(buf, '-')))
+      fatal("invalid syntax");
+    *a++ = 0;
+    if ((b = strchr(a, '-')))
+      *b++ = 0;
+    else
+      b = a, a = buf;
 
-		// set security bits and malloc *shares
-		if (len_secret == 0) {
-			// when first loop
-			size_t security_bits = 4 * strlen(b);
-			if (security_bits % 8 != 0 || security_bits < 8)
-				fatal("share has illegal length");
+    // set security bits and malloc *shares
+    if (len_secret == 0) {
+      // when first loop
+      size_t security_bits = 4 * strlen(b);
+      if (security_bits % 8 != 0 || security_bits < 8)
+        fatal("share has illegal length");
 
-			len_secret = security_bits / 8;
-			len_share = ssss_size_share(len_secret);
-			ptr = shares = (uint8_t*)calloc(len_share, opt_threshold);
-			if (shares == NULL)
-				fatal("Can't allocation memory");
-		} else {
-			// when non first loop
-			if (len_secret*2 != strlen(b))
-				fatal("shares have different security levels");
-		}
+      len_secret = security_bits / 8;
+      len_share = ssss_size_share(len_secret);
+      ptr = shares = (uint8_t*)calloc(len_share, opt_threshold);
+      if (shares == NULL)
+        fatal("Can't allocation memory");
+    } else {
+      // when non first loop
+      if (len_secret*2 != strlen(b))
+        fatal("shares have different security levels");
+    }
 
-		// set x
-		ssss_index_t *meta_ptr = (ssss_index_t*)ptr;
-		ssss_index_t x = atoi(a);
-		if (x == 0)
-			fatal("invalid share");
-		meta_ptr[0] = opt_threshold;
-		meta_ptr[1] = x;
-		str_import(ptr + sizeof(ssss_index_t)*2, len_secret, b, 1);
-	}
+    // set x
+    ssss_index_t *meta_ptr = (ssss_index_t*)ptr;
+    ssss_index_t x = atoi(a);
+    if (x == 0)
+      fatal("invalid share");
+    meta_ptr[0] = opt_threshold;
+    meta_ptr[1] = x;
+    str_import(ptr + sizeof(ssss_index_t)*2, len_secret, b, 1);
+  }
 
-	uint8_t data[MAXDEGREE];
-	if (ssss_combine(shares, data, len_secret, opt_threshold))
-		fatal("shares inconsistent. Perhaps a single share was used twice");
+  uint8_t data[MAXDEGREE];
+  if (ssss_combine(shares, data, len_secret, opt_threshold))
+    fatal("shares inconsistent. Perhaps a single share was used twice");
 
-	if (opt_diffusion) {
-		if (len_secret >= 8)
-			ssss_encode_mpz(len_secret, data, DECODE);
-	else
-		warning("security level too small for the diffusion layer");
-	}
+  if (opt_diffusion) {
+    if (len_secret >= 8)
+      ssss_encode_mpz(len_secret, data, DECODE);
+  else
+    warning("security level too small for the diffusion layer");
+  }
 
-	if (! opt_quiet)
-		fprintf(stderr, "Resulting secret: ");
-	str_print(stdout, data, len_secret, opt_hex);
+  if (! opt_quiet)
+    fprintf(stderr, "Resulting secret: ");
+  str_print(stdout, data, len_secret, opt_hex);
 
-	free(shares);
+  free(shares);
 }
 
 int main(int argc, char *argv[])
