@@ -25,9 +25,11 @@ ssss.1.html: ssss.manpage.xml
 	if [ `which xmlmantohtml` ]; then xmlmantohtml ssss.manpage.xml > ssss.1.html; else echo "WARNING: xmlmantohtml not found, skipping generation of HTML documentation."; fi
 
 clean:
+	$(MAKE) -C libssss $@
 	rm -rf ssss-split ssss-combine ssss.1 ssss-split.1 ssss-combine.1 ssss.1.html $(OBJS)
 
 install:
+	$(MAKE) -C libssss $@
 	if [ -e ssss.1 ]; then install -o root -g wheel -m 644 ssss.1 ssss-split.1 ssss-combine.1 /usr/share/man/man1; else echo "WARNING: No man page was generated, so none will be installed."; fi
 	install -o root -g wheel -m 755 ssss-split ssss-combine /usr/bin
 

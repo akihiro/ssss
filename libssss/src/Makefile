@@ -19,7 +19,5 @@ diffusion.o: diffusion.c
 cprng.o: cprng.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-install:
-
 clean:
 	$(RM) $(OBJS) libssss.so
