@@ -1,6 +1,7 @@
 /*
  *  ssss version 0.5                         -  Copyright 2005,2006 B. Poettering
  *  ssss version 0.5.1..0.5.4 (changes only) -  Copyright 2011,2013 Jon D. Frisby
+ *  ssss version 0.5.6 (libssss)             -  Copyright 2016,2017 Hiroaki Mizuguchi
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License as
